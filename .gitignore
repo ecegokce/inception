@@ -1,0 +1,9 @@
+secrets/
+srcs/.env
+
+# Turkish learning notes are personal study material, not part of the evaluated deliverable
+LEARNING_NOTES_TR.md
+
+# editor / OS noise
+.DS_Store
+*.swp
