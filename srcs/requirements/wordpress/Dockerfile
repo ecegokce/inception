@@ -12,13 +12,15 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         php8.2-fpm php8.2-cli php8.2-mysql php8.2-curl php8.2-gd \
         php8.2-mbstring php8.2-xml php8.2-zip php8.2-intl \
-        default-mysql-client curl less && \
+        default-mysql-client curl ca-certificates less && \
     rm -rf /var/lib/apt/lists/*
 
 # wp-cli, pinned to a specific release tag (never "latest") so builds are
 # reproducible; installed at build time, so no network dependency at runtime.
-RUN curl -fsSL -o /usr/local/bin/wp \
+RUN curl -fsSL -o /usr/local/bin/wp-cli.phar \
         https://github.com/wp-cli/wp-cli/releases/download/v2.11.0/wp-cli-2.11.0.phar && \
+    chmod +x /usr/local/bin/wp-cli.phar && \
+    printf '#!/bin/sh\nexec php /usr/local/bin/wp-cli.phar "$@"\n' > /usr/local/bin/wp && \
     chmod +x /usr/local/bin/wp
 
 # listen on 0.0.0.0:9000 (not the default 127.0.0.1) so nginx, running in

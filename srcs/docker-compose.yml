@@ -1,25 +1,18 @@
-version: "3.8"
-
 services:
   mariadb:
     build: ./requirements/mariadb
-    image: mariadb
+    image: mariadb:1.0
     container_name: mariadb
     env_file: .env
     secrets:
       - db_password
       - db_root_password
     volumes:
-      # Named volume, not a bind mount, per subject — but its `local`
-      # driver with these opts makes it physically live under
-      # /home/egokce/data/mariadb on the host (created by `make all`).
       - mariadb_data:/var/lib/mysql
     networks:
       - inception
     restart: always
     healthcheck:
-      # Used by wordpress's `depends_on: condition: service_healthy`
-      # instead of a sleep/poll loop in an entrypoint script.
       test: ["CMD-SHELL", "mysqladmin ping -uroot -p\"$$(cat /run/secrets/db_root_password)\" --silent"]
       interval: 5s
       timeout: 5s
@@ -28,7 +21,7 @@ services:
 
   wordpress:
     build: ./requirements/wordpress
-    image: wordpress
+    image: wordpress:1.0
     container_name: wordpress
     env_file: .env
     secrets:
@@ -46,14 +39,12 @@ services:
 
   nginx:
     build: ./requirements/nginx
-    image: nginx
+    image: nginx:1.0
     container_name: nginx
     env_file: .env
     volumes:
-      # nginx only ever reads these files (php-fpm is the one writing them).
       - wordpress_data:/var/www/html:ro
     ports:
-      # 443 only — nginx is the sole entrypoint, no plain HTTP port exposed.
       - "443:443"
     networks:
       - inception
@@ -62,8 +53,6 @@ services:
       - wordpress
 
 networks:
-  # User-defined network, as required by the subject (no `network: host`,
-  # no legacy `--link`/`links:`).
   inception:
     driver: bridge
 

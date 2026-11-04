@@ -7,7 +7,7 @@ FROM debian:12.11-slim
 # the install/admin client tools with it. No recommends to keep the image lean.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends mariadb-server && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* /var/lib/mysql/*
 
 # Custom bind-address / logging tweaks, see conf/50-server.cnf for why.
 COPY conf/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf

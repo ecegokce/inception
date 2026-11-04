@@ -15,12 +15,12 @@ WP_USER_PASSWORD=$(cat /run/secrets/wp_user_password)
 # so its presence means this volume already holds a configured WordPress
 # (the volume is a named, persistent volume, so init.sh re-runs on every
 # container start, not just the very first one).
-if [ ! -f "${WP_PATH}/wp-config.php" ]; then
+if ! wp core is-installed --path="${WP_PATH}" --allow-root 2>/dev/null; then
 	echo "[wordpress-init] no wp-config.php found, installing WordPress"
 
-	wp core download --path="${WP_PATH}" --allow-root
+	wp core download --force --path="${WP_PATH}" --allow-root
 
-	wp config create \
+	wp config create --force \
 		--path="${WP_PATH}" \
 		--dbname="${MYSQL_DATABASE}" \
 		--dbuser="${MYSQL_USER}" \
@@ -53,7 +53,7 @@ if [ ! -f "${WP_PATH}/wp-config.php" ]; then
 
 	echo "[wordpress-init] WordPress install complete"
 else
-	echo "[wordpress-init] wp-config.php already present, skipping install"
+	echo "[wordpress-init] WordPress already installed, skipping install"
 fi
 
 exec php-fpm8.2 -F

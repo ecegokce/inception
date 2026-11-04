@@ -73,3 +73,17 @@ docker logs nginx
 docker logs wordpress
 docker logs mariadb
 ```
+
+
+
+
+"(up) ağı, volume’ları ve container’ları sırasıyla kurar. down, ps, logs da aynı dosyaya bakarak çalışır. Makefile’ın $(COMPOSE) değişkeni bu komutun uzun hâli." ilk all yapmam gerekmiyo mu ilk onda bu dosyaya bakıyo sonrasında da hep komutlarda yine bu dosyaya bakıyo dimi? peki down yada ps, logs falan neden bu dosyaya bakıyo nesine bakıyo ne işi var?
+"Her servis varsayılan olarak tek bir container olur." birden fazla container olması için build'e başka dosya yolları mı vermem gerekirdi? (bilgi için soruyorum yapmak için değil)
+dördüncü sorunun cevabını anlamadım tam, yani sonrasında tanımlıyosan öncesinde kullanman sorun değil mi diyosun? yoksa öncesinde kullanmadığın bişeyi sonra tanımlama mı diyosun? yoksa tanımladığın sürece kullanımdan önce yada sonra tanımlaman önemli değil yeter ki tanımla mı diyosun (tanımlamazsam hata verir biliyorum onu ama nerede tanımladığım önemli mi onu anlamaya çalışıyorum)
+"Makefile kural-komut mantığıyla çalışır, compose dosyası ise bildirimsel (declarative): “ne istediğimi” yazarsın, nasıl yapılacağını Compose bulur." anlamadım, makefile kural komut tamam kurallara komutlar atıyoruz make clean dediğimizde mesela temizliyo, compose'un mantığını anlamadım. ne istediğimi yazarım derken mesela build diyorum o satırı alıyo (dosya yolu) ve arka tarafta da build komutunu çalıştırıyo bu dosya yoluyla doğru mu?
+init ve env'i anlamadım ama şuanlık onu arka plana atsam sonra inir ve env dosyasının içeriğini öğrenirken anlamaya çalışsam olur mu şuan bi yapıtaşı değil dimi
+mariadb_data nasıl iki dosyayı birbirine bağlıyo da container'ın yazdığı veriler diskte ki dosyada gözüküyo? container diskte ki dosyaya mı yazıyo yoksa kendi içindeki dosyaya yazıyo ve mariadb_data ikisini birbirine bağlıyo ve o kendi dosyasına yazıyo bağlantı sayesinde de diskte ki dosyayada mı yazılıyo?
+"WordPress’in “veritabanını bekleme” döngüsünü yasaklıyor, çözüm: healthcheck + depends_on: condition: service_healthy" bu çözüm olmasaydı döngü nasıl gerçekleşiyordu ve bu çözüm nasıl bu döngüyü kırmış oldu brute force gibi sürekli ayağa kalktı mı kalktı mı diye soruyosa da aslında bi döngü olmuş olmuyo mu
+"3306/tcp ve 9000/tcp"portlarını niye dinliyolar? php-fpm nedir? ben wordpress ve mariaby'ye de port versem kend ağları dışına da açılabilirler mi diye sordum yoksa nginx servisine mş özel (subjectten bağımsız bilgi için soruyorum)
+"type: none: gerçek bir dosya sistemi türü yok (bind için kullanılır).
+o: bind: bir klasörü başka bir yerde görünür kıl (bind mount)." bind ve bind mount ne demek? bind etmek ne demek? mount -o bind ile yani containerın içindeki volume'ü ve diskte ki volume mü bağlanıyo?
