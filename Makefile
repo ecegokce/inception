@@ -14,7 +14,7 @@ SECRET_NAMES = db_password db_root_password wp_admin_password wp_user_password
 check-config:
 	@test -d $(SECRETS_DIR) && test -f $(ENV_FILE) || \
 		(echo "error: missing $(SECRETS_DIR)/ or $(ENV_FILE)" && exit 1)
-#test dediği?
+
 all: check-config
 	mkdir -p $(DATA_DIR)/mariadb $(DATA_DIR)/wordpress
 	$(COMPOSE) up -d --build --force-recreate

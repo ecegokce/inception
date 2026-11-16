@@ -1,111 +1,215 @@
-# Inception — Developer Guide
+# Inception: Developer Guide
+
+This guide explains how to set up, build and maintain the project. To use
+the running site, read [USER_DOC.md](USER_DOC.md).
 
 ## Prerequisites
 
-- A Linux VM with Docker Engine and the Docker Compose plugin installed
-  (`docker compose version` should work).
-- `openssl` available on the host (used by `make init` to generate secrets,
-  and inside the nginx container to generate the TLS certificate).
+- A Linux VM (the project was developed on Debian) with:
+  - Docker Engine and the Docker Compose plugin (`docker compose version`
+    must work)
+  - `make`
+  - `openssl`, to generate the passwords
+  - `sudo` rights, because `make fclean` deletes data folders owned by
+    container users
+- Your user must be in the `docker` group, or you must run the commands
+  with `sudo`.
 
-## Repo layout
+## Repository layout
 
 ```
-Makefile                         entry point for every operation
-srcs/docker-compose.yml          the 3 services, network, volumes, secrets
-srcs/.env.example                committed template -> copied to srcs/.env
-srcs/.env                        git-ignored, real config, created by `make init`
-srcs/requirements/<service>/     one Dockerfile + conf/ + tools/ per service
-secrets.example/                 committed placeholder secret files
-secrets/                         git-ignored, real secrets, created by `make init`
+Makefile                                 entry point for every operation
+README.md / USER_DOC.md / DEV_DOC.md     documentation
+secrets/                                 git-ignored, one password per .txt file
+srcs/
+├── .env                                 git-ignored, non-secret configuration
+├── docker-compose.yml                   services, network, volumes, secrets
+└── requirements/
+    ├── mariadb/
+    │   ├── Dockerfile
+    │   ├── conf/50-server.cnf           bind-address 0.0.0.0, pid file
+    │   └── tools/init.sh                first-run DB setup, then exec mariadbd
+    ├── wordpress/
+    │   ├── Dockerfile                   php8.2-fpm + extensions + wp-cli 2.11.0
+    │   ├── conf/www.conf                php-fpm pool, listen 0.0.0.0:9000
+    │   └── tools/init.sh                first-run WP install, then exec php-fpm8.2 -F
+    └── nginx/
+        ├── Dockerfile
+        ├── conf/nginx.conf              443 ssl, TLSv1.2/1.3, fastcgi_pass wordpress:9000
+        └── tools/init.sh                self-signed cert, then exec nginx
 ```
 
-## Config files and secrets
+## Setting up the environment from scratch
 
-- **`srcs/.env`**: non-secret configuration (domain name, DB name, WordPress
-  usernames/titles). Copied from `srcs/.env.example` by `make init` if it
-  doesn't exist yet; edit it by hand to change e.g. `DOMAIN_NAME`.
-- **`secrets/*.txt`**: one password per file (`db_password`,
-  `db_root_password`, `wp_admin_password`, `wp_user_password`), generated
-  randomly by `make init`. They are mounted into containers at
-  `/run/secrets/<name>` by the compose `secrets:` section — never passed as
-  environment variables or baked into an image.
+`srcs/.env` and `secrets/` are git-ignored, so a fresh clone does not have
+them. `make` stops with `error: missing secrets/ or srcs/.env` until you
+create both.
 
-Both `srcs/.env` and `secrets/` are listed in `.gitignore`. Only the
-`.example` versions (with placeholder values) are committed.
+### 1. `srcs/.env` (non-secret configuration)
+
+```sh
+cat > srcs/.env <<'EOF'
+DOMAIN_NAME=egokce.42.fr
+
+MYSQL_DATABASE=wordpress
+MYSQL_USER=wp_user
+
+WP_TITLE=Inception
+
+WP_ADMIN_USER=egokce_owner
+WP_ADMIN_EMAIL=egokce_owner@egokce.42.fr
+
+WP_USER=editor_eg
+WP_USER_EMAIL=editor_eg@egokce.42.fr
+WP_USER_ROLE=editor
+EOF
+```
+
+| Variable | Used by | Meaning |
+|----------|---------|---------|
+| `DOMAIN_NAME` | nginx, wordpress | Domain for the certificate and the WordPress site URL |
+| `MYSQL_DATABASE`, `MYSQL_USER` | mariadb, wordpress | Database name and user created on the first run |
+| `WP_TITLE` | wordpress | Site title |
+| `WP_ADMIN_USER`, `WP_ADMIN_EMAIL` | wordpress | Administrator. The username must not contain `admin` (subject rule) |
+| `WP_USER`, `WP_USER_EMAIL`, `WP_USER_ROLE` | wordpress | Second, non-admin user |
+
+> `server_name` and the certificate paths in `nginx.conf` are hard-coded to
+> `egokce.42.fr`. If you change `DOMAIN_NAME`, update `nginx.conf` as well.
+
+### 2. `secrets/` (passwords)
+
+```sh
+mkdir -p secrets
+for s in db_password db_root_password wp_admin_password wp_user_password; do
+    openssl rand -base64 18 > secrets/$s.txt
+done
+chmod 600 secrets/*.txt
+```
+
+`docker-compose.yml` declares each file in its top-level `secrets:`
+section. Each service gets only the secrets it lists, mounted read-only at
+`/run/secrets/<name>`:
+
+| Secret | mariadb | wordpress | nginx |
+|--------|:-:|:-:|:-:|
+| `db_password` | ✔ | ✔ | |
+| `db_root_password` | ✔ | | |
+| `wp_admin_password` | | ✔ | |
+| `wp_user_password` | | ✔ | |
+
+Passwords never appear in a Dockerfile, an image layer or an environment
+variable.
+
+### 3. Domain name
+
+```sh
+echo "127.0.0.1 egokce.42.fr" | sudo tee -a /etc/hosts
+```
+
+### 4. Data folders
+
+`make` creates them for you, so this step is only for information:
+
+```sh
+mkdir -p /home/egokce/data/mariadb /home/egokce/data/wordpress
+```
 
 ## Building and launching
 
+The Makefile wraps Docker Compose. Every Docker target runs:
+
 ```sh
-make init     # creates srcs/.env and secrets/*.txt (idempotent, run once)
-make all      # mkdir -p host data dirs, then docker compose up -d --build
+docker compose -f srcs/docker-compose.yml --env-file srcs/.env <command>
 ```
 
-`make all` / `make build` / `make up` refuse to run if `secrets/` or
-`srcs/.env` are missing, and tell you to run `make init` first.
+| Target | Action |
+|--------|--------|
+| `make` / `make all` | `check-config`, create the data folders, then `up -d --build --force-recreate` |
+| `make build` | Build the images only (`mariadb:1.0`, `wordpress:1.0`, `nginx:1.0`) |
+| `make up` | Create and start the containers without rebuilding |
+| `make start` / `make stop` | Start or stop existing containers |
+| `make down` | Remove the containers and the network. Volumes and data are kept |
+| `make logs` | `logs -f` for all services |
+| `make ps` | Container status |
+| `make clean` | `down` + remove the locally built images |
+| `make fclean` | `clean` + `down -v` + `sudo rm -rf /home/egokce/data/{mariadb,wordpress}` |
+| `make re` | `fclean` then `all`, a full reset from scratch |
 
-Other targets: `make build` (build images only), `make up` (start without
-rebuilding), `make down`, `make stop`, `make logs`, `make ps`, `make clean`
-(remove containers + locally built images, keep volumes/data),
-`make fclean` (also remove volumes and the host data directory — may need
-`sudo` since the data is root-owned by the containers), `make re`
-(`fclean` + `all`).
+### Startup sequence
 
-Every target that touches Docker calls
-`docker compose -f srcs/docker-compose.yml --env-file srcs/.env ...`, so
-compose is never invoked directly/inconsistently.
+1. **mariadb** starts. On an empty data folder, `init.sh` runs
+   `mariadb-install-db`, then `mariadbd --bootstrap` with a SQL script that
+   sets the root password, creates the database and user and removes
+   anonymous users. It then runs `exec mariadbd`.
+2. Compose runs the healthcheck (`mysqladmin ping`) every 5 s. When it
+   succeeds, mariadb is `healthy`.
+3. **wordpress** starts because of `depends_on: condition:
+   service_healthy`. If `wp core is-installed` fails, wp-cli downloads
+   WordPress, creates `wp-config.php` (`--dbhost=mariadb`), installs the
+   site and creates the second user. It then runs `exec php-fpm8.2 -F`.
+4. **nginx** creates a self-signed certificate in `/etc/nginx/ssl/` if
+   there is none, then runs `exec nginx -g "daemon off;"`.
 
-## How each container starts
-
-All three images use the same pattern: a small `tools/init.sh` entrypoint
-that does one-time setup *idempotently* (safe to re-run on every container
-start), then replaces itself with the real service via `exec`, so that
-service — not a shell — ends up as PID 1. There is no polling/sleep loop
-anywhere.
-
-- **mariadb**: on an empty data directory, runs `mariadb-install-db` then
-  `mariadbd --bootstrap` fed a one-shot SQL script (create DB, create the
-  WordPress DB user, set the root password). On a non-empty data directory
-  (i.e. the volume already has data), this is skipped. Finishes with
-  `exec mariadbd`.
-- **wordpress**: if `wp-config.php` doesn't exist yet, downloads WordPress,
-  configures it, installs it, and creates the second WordPress user, all
-  via wp-cli, reading passwords from `/run/secrets/*`. Otherwise skipped.
-  Finishes with `exec php-fpm8.2 -F`, listening on `0.0.0.0:9000`.
-- **nginx**: generates a self-signed certificate for `DOMAIN_NAME` if one
-  isn't already on disk, then `exec nginx -g 'daemon off;'`. Listens on
-  443 only, TLS 1.2/1.3, proxies `.php` requests to `wordpress:9000`.
-
-`wordpress` only starts once mariadb's healthcheck passes
-(`depends_on: condition: service_healthy` in the compose file), which is
-how "wait for the DB" is handled without a loop in any entrypoint script.
+Each `init.sh` checks first whether its setup was already done, so it is
+safe to run again on every restart. Each one ends with `exec`, so the
+daemon becomes PID 1.
 
 ## Managing containers and volumes
 
 ```sh
-docker compose -f srcs/docker-compose.yml ps
-docker compose -f srcs/docker-compose.yml logs -f <service>
+# status and logs
+make ps
+docker logs -f wordpress
+
+# open a shell inside a container
 docker exec -it mariadb bash
 docker exec -it wordpress bash
-docker volume ls          # shows mariadb_data / wordpress_data
+docker exec -it nginx bash
+
+# connect to the database
+docker exec -it mariadb sh -c 'mariadb -uroot -p"$(cat /run/secrets/db_root_password)"'
+
+# WordPress CLI
+docker exec -it wordpress wp user list --allow-root --path=/var/www/html
+
+# rebuild and restart a single service
+docker compose -f srcs/docker-compose.yml --env-file srcs/.env up -d --build nginx
+
+# network and volumes
+docker network ls                      # srcs_inception
+docker network inspect srcs_inception
+docker volume ls                       # srcs_mariadb_data, srcs_wordpress_data
 docker volume inspect srcs_mariadb_data
+
+# test the nginx config inside the container
+docker exec nginx nginx -t
 ```
 
-## Where data is stored, and how it persists
+Compose adds the project name (`srcs`, from the folder of the compose file)
+in front of the network and volume names.
 
-The two named volumes (`mariadb_data`, `wordpress_data`) use the `local`
-driver with `driver_opts: type: none, o: bind, device: ...`, which makes a
-named volume that is physically backed by a specific host directory rather
-than Docker's internal storage area:
+## Where the data is stored and how it persists
 
-- `mariadb_data`   -> `/home/egokce/data/mariadb`
-- `wordpress_data` -> `/home/egokce/data/wordpress`
+| Volume | Mounted in | Host folder |
+|--------|------------|-------------|
+| `mariadb_data` | mariadb: `/var/lib/mysql` | `/home/egokce/data/mariadb` |
+| `wordpress_data` | wordpress: `/var/www/html` (rw), nginx: `/var/www/html` (`:ro`) | `/home/egokce/data/wordpress` |
 
-`make all` creates both directories before starting compose. Because this
-is a real named volume (not a bind mount in the compose file itself), it
-satisfies the subject's "named volumes only" requirement while still
-putting the bytes where the subject also requires them to be.
+Both are **named volumes** using the `local` driver with `driver_opts: type:
+none, o: bind, device: <host path>`. Docker manages them by name, and their
+content is written to the host folders above.
 
-Data survives `make down` + `make up` (and plain container
-crashes/restarts) because the volume — and the host directory behind it —
-is untouched by either. Only `make fclean` (or `docker compose ... down -v`)
-removes it.
+What deletes the data:
+
+| Action | Containers | Images | Data in `/home/egokce/data` |
+|--------|:-:|:-:|:-:|
+| Container crash / `restart: always` | restarted | kept | **kept** |
+| `make stop` / `make start` | stopped / started | kept | **kept** |
+| `make down` / `make up` | removed / recreated | kept | **kept** |
+| `make clean` | removed | removed | **kept** |
+| VM reboot | restarted automatically | kept | **kept** |
+| `make fclean` / `make re` | removed | removed | **deleted** |
+
+Because the first-run setup is skipped when data already exists, changes
+made in WordPress (posts, users, settings) survive rebuilds. To check:
+create a post, run `make down && make up`, and the post is still there.

@@ -45,7 +45,7 @@ services:
     volumes:
       - wordpress_data:/var/www/html:ro
     ports:
-      - "443:443"
+      - "443:443" #neden 443:443 sağ taraf port sol taraf ne
     networks:
       - inception
     restart: always
@@ -60,8 +60,8 @@ volumes:
   mariadb_data:
     driver: local
     driver_opts:
-      type: none
-      o: bind
+      type: none #neydi
+      o: bind    #neydi
       device: /home/egokce/data/mariadb
   wordpress_data:
     driver: local

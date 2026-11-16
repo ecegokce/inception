@@ -1,10 +1,4 @@
 [mysqld]
-# Must listen on all interfaces inside the container, not just 127.0.0.1,
-# so the wordpress container can reach it over the user-defined network.
 bind-address = 0.0.0.0
 
-# Run in the foreground: mariadbd is started directly (not via mysqld_safe)
-# by init.sh so it can be PID 1. This option has no effect on that by
-# itself (the -F flag used in init.sh does), it's kept here only to make
-# the intent explicit for anyone reading the config.
 pid-file = /run/mysqld/mysqld.pid
